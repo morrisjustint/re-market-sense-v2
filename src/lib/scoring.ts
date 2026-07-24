@@ -51,9 +51,9 @@ export function resolveBand(
 }
 
 const BAND_NEXT_STEP: Record<string, string> = {
-  hot: "Call or text this week — they look ready to move.",
-  warm: "Send a helpful check-in and stay close.",
-  future: "Add to nurture — check back in a few months.",
+  hot: "Call or text this week – ready to move",
+  warm: "Send a helpful check-in – open to talking",
+  future: "Send a market update – longer timeline",
 }
 
 export function recommendedNextStepForBand(band: ScoringBand | null) {

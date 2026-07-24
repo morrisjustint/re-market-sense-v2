@@ -3,11 +3,7 @@
 import { revalidatePath } from "next/cache"
 
 import { requireOrg, getTemplateById } from "@/lib/data"
-import {
-  sampleAnswersForTemplate,
-  scoreResponse,
-  type ResponseAnswers,
-} from "@/lib/scoring"
+import { scoreResponse, type ResponseAnswers } from "@/lib/scoring"
 import { createClient } from "@/lib/supabase/server"
 import type { DeploymentStatus } from "@/types/database"
 
@@ -151,77 +147,6 @@ export async function recordResponse(input: {
       success: true,
       data: { responseId: response.id, score: response.score },
     }
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Something went wrong.",
-    }
-  }
-}
-
-/** Creates sample scored replies so agents can preview Leads + exports. */
-export async function seedSampleResponses(
-  deploymentId: string
-): Promise<ActionResult<{ count: number }>> {
-  try {
-    const org = await requireOrg()
-    const supabase = await createClient()
-
-    const { data: deployment } = await supabase
-      .from("deployments")
-      .select("id, template_id, list_id")
-      .eq("id", deploymentId)
-      .eq("org_id", org.id)
-      .maybeSingle()
-
-    if (!deployment) return { success: false, error: "Deployment not found." }
-
-    const template = await getTemplateById(deployment.template_id)
-    if (!template) return { success: false, error: "Template not found." }
-
-    const { data: contacts } = await supabase
-      .from("contacts")
-      .select("id")
-      .eq("org_id", org.id)
-      .eq("list_id", deployment.list_id)
-      .order("created_at", { ascending: true })
-      .limit(12)
-
-    if (!contacts?.length) {
-      return { success: false, error: "This list has no contacts yet." }
-    }
-
-    const heats: Array<"hot" | "warm" | "future"> = ["hot", "warm", "future"]
-    let count = 0
-
-    for (let i = 0; i < contacts.length; i += 1) {
-      const contact = contacts[i]!
-      const heat = heats[i % heats.length]!
-      const answers = sampleAnswersForTemplate(template, heat)
-      const scored = scoreResponse(template, answers)
-
-      const { error } = await supabase.from("responses").upsert(
-        {
-          org_id: org.id,
-          deployment_id: deployment.id,
-          contact_id: contact.id,
-          answers,
-          score: scored.score,
-          band_id: scored.band?.id ?? null,
-          band_label: scored.band?.label ?? null,
-          recommended_next_step: scored.recommendedNextStep,
-        },
-        { onConflict: "deployment_id,contact_id" }
-      )
-
-      if (error) return { success: false, error: error.message }
-      count += 1
-    }
-
-    revalidatePath("/app/analytics")
-    revalidatePath("/app/deploy")
-
-    return { success: true, data: { count } }
   } catch (error) {
     return {
       success: false,

@@ -2,11 +2,25 @@
 
 import { getScoredLeads, requireOrg } from "@/lib/data"
 import { leadsToCsv, leadsToDocxBuffer } from "@/lib/exports/leads"
+import type { ScoredLead } from "@/types/database"
 
-export async function exportLeadsCsv(deploymentId?: string) {
-  const leads = await getScoredLeads(
-    deploymentId ? { deploymentId } : undefined
+type ExportInput = {
+  deploymentId?: string
+  /** When provided (e.g. sample preview), export these instead of DB rows. */
+  leads?: ScoredLead[]
+}
+
+async function resolveLeads(input?: ExportInput) {
+  if (input?.leads?.length) return input.leads
+  return getScoredLeads(
+    input?.deploymentId ? { deploymentId: input.deploymentId } : undefined
   )
+}
+
+export async function exportLeadsCsv(input?: ExportInput | string) {
+  const normalized =
+    typeof input === "string" ? { deploymentId: input } : input
+  const leads = await resolveLeads(normalized)
   const csv = leadsToCsv(leads)
   return {
     filename: `re-market-sense-leads-${new Date().toISOString().slice(0, 10)}.csv`,
@@ -15,11 +29,11 @@ export async function exportLeadsCsv(deploymentId?: string) {
   }
 }
 
-export async function exportLeadsDocx(deploymentId?: string) {
+export async function exportLeadsDocx(input?: ExportInput | string) {
+  const normalized =
+    typeof input === "string" ? { deploymentId: input } : input
   const org = await requireOrg()
-  const leads = await getScoredLeads(
-    deploymentId ? { deploymentId } : undefined
-  )
+  const leads = await resolveLeads(normalized)
   const buffer = await leadsToDocxBuffer(leads, {
     orgName: org.name,
     title: "Who's ready to move",
