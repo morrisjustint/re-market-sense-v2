@@ -1,103 +1,110 @@
-import Image from "next/image";
+import Link from "next/link"
+import { ArrowRight } from "lucide-react"
 
-export default function Home() {
+import { Logo } from "@/components/brand/logo"
+import { Button } from "@/components/ui/button"
+import { getCurrentUser, getUserOrg } from "@/lib/auth"
+
+export default async function LandingPage() {
+  const user = await getCurrentUser()
+  const org = user ? await getUserOrg() : null
+  const ctaHref = user ? (org ? "/app" : "/onboarding") : "/signup"
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <div className="relative min-h-svh overflow-hidden">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_oklch(0.85_0.06_195)_0%,_transparent_50%),radial-gradient(ellipse_at_bottom_left,_oklch(0.9_0.04_250)_0%,_transparent_45%),linear-gradient(180deg,_oklch(0.98_0.01_210)_0%,_oklch(0.94_0.02_220)_100%)]"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-[0.35] [background-image:linear-gradient(oklch(0.28_0.05_250_/_0.04)_1px,transparent_1px),linear-gradient(90deg,oklch(0.28_0.05_250_/_0.04)_1px,transparent_1px)] [background-size:48px_48px]"
+      />
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+      <header className="relative z-10 mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-5 md:px-6">
+        <Logo />
+        <div className="flex items-center gap-2">
+          {user ? (
+            <Button asChild>
+              <Link href={ctaHref}>
+                Open app
+                <ArrowRight className="size-4" />
+              </Link>
+            </Button>
+          ) : (
+            <>
+              <Button asChild variant="ghost">
+                <Link href="/login">Sign in</Link>
+              </Button>
+              <Button asChild className="hidden sm:inline-flex">
+                <Link href="/signup">Get Started</Link>
+              </Button>
+            </>
+          )}
+        </div>
+      </header>
+
+      <main className="relative z-10 mx-auto flex w-full max-w-5xl flex-col px-4 pb-16 pt-10 md:px-6 md:pt-20">
+        <div className="max-w-2xl space-y-6">
+          <p className="font-heading text-4xl font-semibold tracking-tight text-navy sm:text-5xl md:text-6xl">
+            RE Market Sense
+          </p>
+          <h1 className="max-w-xl text-xl font-medium leading-relaxed text-foreground/90 md:text-2xl">
+            Know who on your list is ready to buy, sell, or move — and what to do
+            next.
+          </h1>
+          <p className="max-w-lg text-base text-muted-foreground md:text-lg">
+            Upload contact lists, send check-ins, score replies, and follow up
+            with clear next steps from one professional workspace.
+          </p>
+          <div className="flex flex-wrap items-center gap-3 pt-2">
+            <Button asChild size="lg">
+              <Link href={ctaHref}>
+                Get Started
+                <ArrowRight className="size-4" />
+              </Link>
+            </Button>
+            {!user ? (
+              <Button asChild size="lg" variant="outline">
+                <Link href="/login">Sign in</Link>
+              </Button>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="mt-16 overflow-hidden rounded-2xl border border-border/80 bg-card/70 shadow-[0_24px_60px_-28px_oklch(0.28_0.05_250_/_0.35)] backdrop-blur">
+          <div className="border-b border-border/70 bg-navy px-4 py-3 text-sm text-white/80">
+            Workspace preview
+          </div>
+          <div className="grid gap-px bg-border/60 md:grid-cols-[200px_1fr]">
+            <div className="hidden space-y-2 bg-sidebar p-4 text-sm text-sidebar-foreground/70 md:block">
+              {["Dashboard", "Lists", "Research", "Deploy", "Leads"].map(
+                (item) => (
+                  <div
+                    key={item}
+                    className="rounded-md px-3 py-2 data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground"
+                    data-active={item === "Dashboard"}
+                  >
+                    {item}
+                  </div>
+                )
+              )}
+            </div>
+            <div className="space-y-4 bg-card p-5 md:p-8">
+              <div className="h-4 w-40 rounded bg-muted" />
+              <div className="grid gap-3 sm:grid-cols-3">
+                {[1, 2, 3].map((i) => (
+                  <div
+                    key={i}
+                    className="h-24 rounded-xl border border-border/80 bg-gradient-to-br from-accent/80 to-muted/40"
+                  />
+                ))}
+              </div>
+              <div className="h-36 rounded-xl border border-dashed border-border bg-muted/30" />
+            </div>
+          </div>
         </div>
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
     </div>
-  );
+  )
 }
