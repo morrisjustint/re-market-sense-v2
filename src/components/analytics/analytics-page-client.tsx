@@ -4,17 +4,31 @@ import { useEffect, useMemo, useState, useTransition, type ReactNode } from "rea
 import Link from "next/link"
 import {
   ChevronDown,
+  Clock3,
   FileSpreadsheet,
   FileText,
   Flame,
+  Leaf,
+  Mail,
   Sparkles,
   Snowflake,
   SunMedium,
+  UserX,
+  Zap,
   X,
 } from "lucide-react"
 import { toast } from "sonner"
 
 import { exportLeadsCsv, exportLeadsDocx } from "@/lib/actions/exports"
+import {
+  activeFollowUpCount,
+  countIntents,
+  countOutcomes,
+  INTENT_META,
+  orderedOutcomeEntries,
+  type OutcomeBucket,
+  type PrimaryIntent,
+} from "@/lib/leads/outcomes"
 import {
   clearSampleLeadsFromSession,
   enrichLeadsWithAnswers,
@@ -48,6 +62,7 @@ type DeploymentOption = Pick<Deployment, "id" | "name" | "status"> & {
 }
 
 type BandFilter = "all" | "hot" | "warm" | "future"
+type OutcomeFilter = "all" | OutcomeBucket
 
 function downloadBlob(filename: string, mimeType: string, data: BlobPart) {
   const blob = new Blob([data], { type: mimeType })
@@ -84,6 +99,23 @@ function contactName(lead: DisplayLead) {
   return [lead.first_name, lead.last_name].filter(Boolean).join(" ") || "—"
 }
 
+const OUTCOME_ICONS: Record<OutcomeBucket, ReactNode> = {
+  immediate: <Zap className="size-4" />,
+  this_week: <Mail className="size-4" />,
+  nurture_30_90: <Leaf className="size-4" />,
+  longer_term: <Clock3 className="size-4" />,
+  do_not_contact: <UserX className="size-4" />,
+}
+
+const INTENT_DISPLAY_ORDER: PrimaryIntent[] = [
+  "buy",
+  "sell",
+  "buy_sell",
+  "rent",
+  "exploring",
+  "no_plans",
+]
+
 export function AnalyticsPageClient({
   leads,
   deployments,
@@ -96,6 +128,7 @@ export function AnalyticsPageClient({
   const [pending, startTransition] = useTransition()
   const [filterDeploymentId, setFilterDeploymentId] = useState("all")
   const [bandFilter, setBandFilter] = useState<BandFilter>("all")
+  const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>("all")
   const [sampleLeads, setSampleLeads] = useState<DisplayLead[] | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [hydrated, setHydrated] = useState(false)
@@ -112,7 +145,12 @@ export function AnalyticsPageClient({
     null
 
   const realLeads = useMemo(
-    () => enrichLeadsWithAnswers(leads, templatesByName, defaultTemplate ?? undefined),
+    () =>
+      enrichLeadsWithAnswers(
+        leads,
+        templatesByName,
+        defaultTemplate ?? undefined
+      ),
     [leads, templatesByName, defaultTemplate]
   )
 
@@ -136,17 +174,38 @@ export function AnalyticsPageClient({
     return activeLeads.filter((lead) => lead.deployment_id === filterDeploymentId)
   }, [activeLeads, filterDeploymentId, usingSamples])
 
-  const visibleLeads = useMemo(() => {
-    if (bandFilter === "all") return deploymentFiltered
-    return deploymentFiltered.filter(
-      (lead) => lead.band_id?.toLowerCase() === bandFilter
-    )
-  }, [deploymentFiltered, bandFilter])
-
   const bandCounts = useMemo(
     () => countBands(deploymentFiltered),
     [deploymentFiltered]
   )
+  const outcomeCounts = useMemo(
+    () => countOutcomes(deploymentFiltered),
+    [deploymentFiltered]
+  )
+  const intentCounts = useMemo(
+    () => countIntents(deploymentFiltered),
+    [deploymentFiltered]
+  )
+  const outcomeEntries = useMemo(
+    () => orderedOutcomeEntries(outcomeCounts),
+    [outcomeCounts]
+  )
+  const activeFollowUps = activeFollowUpCount(outcomeCounts)
+
+  const visibleLeads = useMemo(() => {
+    return deploymentFiltered.filter((lead) => {
+      if (
+        bandFilter !== "all" &&
+        lead.band_id?.toLowerCase() !== bandFilter
+      ) {
+        return false
+      }
+      if (outcomeFilter !== "all" && lead.outcome_id !== outcomeFilter) {
+        return false
+      }
+      return true
+    })
+  }, [deploymentFiltered, bandFilter, outcomeFilter])
 
   const onGenerateSamples = () => {
     if (!defaultTemplate) {
@@ -157,6 +216,7 @@ export function AnalyticsPageClient({
     setSampleLeads(generated)
     saveSampleLeadsToSession(generated)
     setBandFilter("all")
+    setOutcomeFilter("all")
     setExpandedId(null)
     toast.success("Sample replies ready — nothing was saved to your lists.")
   }
@@ -169,7 +229,10 @@ export function AnalyticsPageClient({
   }
 
   const onExportCsv = () => {
-    const toExport = bandFilter === "all" ? deploymentFiltered : visibleLeads
+    const toExport =
+      bandFilter === "all" && outcomeFilter === "all"
+        ? deploymentFiltered
+        : visibleLeads
 
     startTransition(async () => {
       try {
@@ -194,7 +257,10 @@ export function AnalyticsPageClient({
   }
 
   const onExportDocx = () => {
-    const toExport = bandFilter === "all" ? deploymentFiltered : visibleLeads
+    const toExport =
+      bandFilter === "all" && outcomeFilter === "all"
+        ? deploymentFiltered
+        : visibleLeads
 
     startTransition(async () => {
       try {
@@ -224,6 +290,10 @@ export function AnalyticsPageClient({
 
   const showEmpty = hydrated && !realLeads.length && !sampleLeads?.length
 
+  const intentChips = INTENT_DISPLAY_ORDER.filter(
+    (id) => (intentCounts[id] ?? 0) > 0
+  )
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -231,9 +301,9 @@ export function AnalyticsPageClient({
           <h1 className="font-heading text-2xl font-semibold text-navy md:text-3xl">
             Who&apos;s ready to move
           </h1>
-          <p className="mt-1 max-w-xl text-sm text-muted-foreground md:text-base">
-            Hot, Warm, and Future contacts with a clear next step for each
-            person on your list.
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground md:text-base">
+            Intent → temperature → recommended next action. Use this as your
+            call list for the week.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -282,47 +352,161 @@ export function AnalyticsPageClient({
         </div>
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <BandSummaryCard
-          band="hot"
-          label="Hot"
-          count={bandCounts.hot}
-          hint="Call or text this week"
-          active={bandFilter === "hot"}
-          onClick={() =>
-            setBandFilter((prev) => (prev === "hot" ? "all" : "hot"))
-          }
-          icon={<Flame className="size-5" />}
-          className="border-primary/30 bg-gradient-to-br from-primary/15 via-card to-card"
-          accent="text-primary"
-        />
-        <BandSummaryCard
-          band="warm"
-          label="Warm"
-          count={bandCounts.warm}
-          hint="Stay close with a check-in"
-          active={bandFilter === "warm"}
-          onClick={() =>
-            setBandFilter((prev) => (prev === "warm" ? "all" : "warm"))
-          }
-          icon={<SunMedium className="size-5" />}
-          className="border-teal/30 bg-gradient-to-br from-teal/10 via-card to-card"
-          accent="text-teal"
-        />
-        <BandSummaryCard
-          band="future"
-          label="Future"
-          count={bandCounts.future}
-          hint="Nurture for later"
-          active={bandFilter === "future"}
-          onClick={() =>
-            setBandFilter((prev) => (prev === "future" ? "all" : "future"))
-          }
-          icon={<Snowflake className="size-5" />}
-          className="border-navy/20 bg-gradient-to-br from-navy/8 via-card to-card"
-          accent="text-navy"
-        />
-      </div>
+      {!showEmpty ? (
+        <>
+          {/* Temperature */}
+          <section className="space-y-3">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-navy">
+                Lead temperature
+              </h2>
+              <span className="text-xs text-muted-foreground">
+                Click to filter
+              </span>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <BandSummaryCard
+                label="Hot"
+                count={bandCounts.hot}
+                hint="Immediate action"
+                active={bandFilter === "hot"}
+                onClick={() =>
+                  setBandFilter((prev) => (prev === "hot" ? "all" : "hot"))
+                }
+                icon={<Flame className="size-5" />}
+                className="border-primary/30 bg-gradient-to-br from-primary/15 via-card to-card"
+                accent="text-primary"
+              />
+              <BandSummaryCard
+                label="Warm"
+                count={bandCounts.warm}
+                hint="Follow up this week"
+                active={bandFilter === "warm"}
+                onClick={() =>
+                  setBandFilter((prev) => (prev === "warm" ? "all" : "warm"))
+                }
+                icon={<SunMedium className="size-5" />}
+                className="border-teal/30 bg-gradient-to-br from-teal/10 via-card to-card"
+                accent="text-teal"
+              />
+              <BandSummaryCard
+                label="Future"
+                count={bandCounts.future}
+                hint="Nurture for later"
+                active={bandFilter === "future"}
+                onClick={() =>
+                  setBandFilter((prev) =>
+                    prev === "future" ? "all" : "future"
+                  )
+                }
+                icon={<Snowflake className="size-5" />}
+                className="border-navy/20 bg-gradient-to-br from-navy/8 via-card to-card"
+                accent="text-navy"
+              />
+            </div>
+          </section>
+
+          {/* Recommended outcomes */}
+          <section className="space-y-3">
+            <div className="flex flex-wrap items-end justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-navy">
+                  Recommended outcomes
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  {activeFollowUps} active follow-ups
+                  {outcomeCounts.immediate || outcomeCounts.this_week
+                    ? ` (${outcomeCounts.immediate} immediate + ${outcomeCounts.this_week} this week)`
+                    : ""}
+                </p>
+              </div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+              {outcomeEntries.map((outcome) => {
+                const active = outcomeFilter === outcome.id
+                return (
+                  <button
+                    key={outcome.id}
+                    type="button"
+                    onClick={() =>
+                      setOutcomeFilter((prev) =>
+                        prev === outcome.id ? "all" : outcome.id
+                      )
+                    }
+                    className="text-left"
+                  >
+                    <Card
+                      className={cn(
+                        "h-full border transition-shadow",
+                        outcome.id === "do_not_contact"
+                          ? "border-border bg-muted/30"
+                          : "border-primary/15 bg-card",
+                        active
+                          ? "ring-2 ring-primary shadow-md"
+                          : "hover:shadow-sm"
+                      )}
+                    >
+                      <CardHeader className="space-y-2 p-4 pb-2">
+                        <CardDescription className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                          <span className="text-primary">
+                            {OUTCOME_ICONS[outcome.id]}
+                          </span>
+                          {outcome.shortLabel}
+                        </CardDescription>
+                        <CardTitle className="font-heading text-2xl tabular-nums text-navy">
+                          {outcome.count}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="p-4 pt-0">
+                        <p className="text-xs font-medium text-foreground">
+                          {outcome.label}
+                        </p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {outcome.hint}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  </button>
+                )
+              })}
+            </div>
+          </section>
+
+          {/* Intent strip */}
+          {intentChips.length ? (
+            <section className="rounded-xl border border-border/80 bg-muted/20 px-4 py-3">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Current plan / intent
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {intentChips.map((id) => (
+                  <Badge
+                    key={id}
+                    variant="outline"
+                    className="bg-card px-2.5 py-1 text-sm font-medium"
+                  >
+                    {INTENT_META[id].label}
+                    <span className="ml-1.5 tabular-nums text-muted-foreground">
+                      {intentCounts[id]}
+                    </span>
+                  </Badge>
+                ))}
+                {(intentCounts.unknown ?? 0) > 0 ? (
+                  <Badge
+                    variant="outline"
+                    className="bg-card px-2.5 py-1 text-sm font-medium"
+                  >
+                    {INTENT_META.unknown.label}
+                    <span className="ml-1.5 tabular-nums text-muted-foreground">
+                      {intentCounts.unknown}
+                    </span>
+                  </Badge>
+                ) : null}
+              </div>
+            </section>
+          ) : null}
+        </>
+      ) : null}
 
       <Card className="overflow-hidden">
         <CardHeader className="gap-4 space-y-0 border-b bg-muted/20">
@@ -330,8 +514,8 @@ export function AnalyticsPageClient({
             <div>
               <CardTitle>Scored contacts</CardTitle>
               <CardDescription>
-                Recommended next action for each person — expand a row to see
-                their answers.
+                Intent, temperature, and next action — expand a row for their
+                answers.
               </CardDescription>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -405,7 +589,7 @@ export function AnalyticsPageClient({
                       onClick={() =>
                         setExpandedId(expanded ? null : lead.id)
                       }
-                      className="grid w-full grid-cols-1 gap-3 px-4 py-4 text-left transition-colors hover:bg-muted/30 sm:grid-cols-[minmax(0,1.2fr)_auto_minmax(0,1.4fr)_auto] sm:items-center sm:gap-4 sm:px-6"
+                      className="grid w-full grid-cols-1 gap-3 px-4 py-4 text-left transition-colors hover:bg-muted/30 lg:grid-cols-[minmax(0,1.15fr)_auto_auto_minmax(0,1.35fr)_auto] lg:items-center lg:gap-4 lg:px-6"
                     >
                       <div className="min-w-0">
                         <p className="font-medium text-foreground">
@@ -420,39 +604,58 @@ export function AnalyticsPageClient({
                         </p>
                       </div>
 
-                      <div className="flex items-center gap-2">
-                        <Badge
-                          variant={
-                            lead.band_id === "hot"
-                              ? "default"
-                              : lead.band_id === "warm"
-                                ? "secondary"
-                                : "outline"
-                          }
-                          className={cn(
-                            "capitalize",
-                            lead.band_id === "hot" && "bg-primary"
-                          )}
-                        >
-                          {lead.band_label ?? lead.band_id ?? "—"}
+                      <div>
+                        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                          Intent
+                        </p>
+                        <Badge variant="outline" className="mt-1 bg-muted/40">
+                          {lead.primary_intent_label}
                         </Badge>
-                        <span className="text-sm font-semibold tabular-nums text-navy">
-                          {lead.score}
-                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <div>
+                          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                            Temp
+                          </p>
+                          <div className="mt-1 flex items-center gap-1.5">
+                            <Badge
+                              variant={
+                                lead.band_id === "hot"
+                                  ? "default"
+                                  : lead.band_id === "warm"
+                                    ? "secondary"
+                                    : "outline"
+                              }
+                              className={cn(
+                                "capitalize",
+                                lead.band_id === "hot" && "bg-primary"
+                              )}
+                            >
+                              {lead.band_label ?? lead.band_id ?? "—"}
+                            </Badge>
+                            <span className="text-sm font-semibold tabular-nums text-navy">
+                              {lead.score}
+                            </span>
+                          </div>
+                        </div>
                       </div>
 
                       <div className="min-w-0">
-                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                           Recommended next action
                         </p>
                         <p className="mt-0.5 text-sm font-medium text-foreground">
                           {lead.recommended_next_step ?? "Review and follow up"}
                         </p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {lead.outcome_label}
+                        </p>
                       </div>
 
                       <ChevronDown
                         className={cn(
-                          "size-4 shrink-0 text-muted-foreground transition-transform justify-self-end",
+                          "size-4 shrink-0 justify-self-end text-muted-foreground transition-transform",
                           expanded && "rotate-180"
                         )}
                       />
@@ -499,8 +702,8 @@ export function AnalyticsPageClient({
 
               {!visibleLeads.length ? (
                 <p className="px-6 py-10 text-center text-sm text-muted-foreground">
-                  No contacts in this filter. Try All, or another readiness
-                  level.
+                  No contacts in this filter. Try All, or clear the outcome
+                  filter.
                 </p>
               ) : null}
             </div>
@@ -521,7 +724,6 @@ function BandSummaryCard({
   className,
   accent,
 }: {
-  band: BandFilter
   label: string
   count: number
   hint: string
@@ -537,9 +739,7 @@ function BandSummaryCard({
         className={cn(
           "h-full border-2 transition-shadow",
           className,
-          active
-            ? "ring-2 ring-primary shadow-md"
-            : "hover:shadow-sm"
+          active ? "ring-2 ring-primary shadow-md" : "hover:shadow-sm"
         )}
       >
         <CardHeader className="pb-2">
@@ -581,13 +781,12 @@ function EmptyLeadsState({
           <Sparkles className="size-6" />
         </div>
         <h2 className="font-heading text-xl font-semibold text-navy">
-          See who on your list is ready
+          See who on your list is ready — and what to do next
         </h2>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          When people reply to your check-in, they show up here as Hot, Warm, or
-          Future — with a clear next step for each contact. Sending is not
-          connected yet, so start with a sample preview to walk through the
-          experience.
+          When people reply, they land here with intent, temperature (Hot /
+          Warm / Future), and a clear recommended action. Preview with sample
+          replies to walk the outcome flow.
         </p>
         <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
           <Button

@@ -23,8 +23,10 @@ export type LeadExportRow = {
   City: string
   State: string
   Zip: string
+  Intent: string
   Score: number
   Band: string
+  Outcome: string
   "Next Step": string
   Deployment: string
   List: string
@@ -37,7 +39,12 @@ function cell(value: string | number | null | undefined) {
   return String(value)
 }
 
-export function leadsToFubRows(leads: ScoredLead[]): LeadExportRow[] {
+type ExportableLead = ScoredLead & {
+  primary_intent_label?: string
+  outcome_label?: string
+}
+
+export function leadsToFubRows(leads: ExportableLead[]): LeadExportRow[] {
   return leads.map((lead) => ({
     "First Name": cell(lead.first_name),
     "Last Name": cell(lead.last_name),
@@ -47,17 +54,21 @@ export function leadsToFubRows(leads: ScoredLead[]): LeadExportRow[] {
     City: cell(lead.city),
     State: cell(lead.state),
     Zip: cell(lead.zip),
+    Intent: cell(lead.primary_intent_label),
     Score: lead.score,
     Band: cell(lead.band_label ?? lead.band_id),
+    Outcome: cell(lead.outcome_label),
     "Next Step": cell(lead.recommended_next_step),
     Deployment: cell(lead.deployment_name),
     List: cell(lead.list_name),
     Template: cell(lead.template_name),
-    Tags: [lead.band_label, lead.band_id].filter(Boolean).join("; "),
+    Tags: [lead.band_label, lead.band_id, lead.primary_intent_label]
+      .filter(Boolean)
+      .join("; "),
   }))
 }
 
-export function leadsToCsv(leads: ScoredLead[]) {
+export function leadsToCsv(leads: ExportableLead[]) {
   return Papa.unparse(leadsToFubRows(leads), { header: true })
 }
 
@@ -106,7 +117,7 @@ function bodyCell(text: string) {
 }
 
 export async function leadsToDocxBuffer(
-  leads: ScoredLead[],
+  leads: ExportableLead[],
   options?: { orgName?: string; title?: string }
 ) {
   const counts = { hot: 0, warm: 0, future: 0 }
@@ -124,8 +135,8 @@ export async function leadsToDocxBuffer(
     new TableRow({
       children: [
         headerCell("Name"),
-        headerCell("Score"),
-        headerCell("Band"),
+        headerCell("Intent"),
+        headerCell("Temp"),
         headerCell("Next step"),
         headerCell("Phone / Email"),
       ],
@@ -136,7 +147,7 @@ export async function leadsToDocxBuffer(
       return new TableRow({
         children: [
           bodyCell(name),
-          bodyCell(String(lead.score)),
+          bodyCell(lead.primary_intent_label ?? "—"),
           bodyCell(lead.band_label ?? lead.band_id ?? "—"),
           bodyCell(lead.recommended_next_step ?? "—"),
           bodyCell(contact),

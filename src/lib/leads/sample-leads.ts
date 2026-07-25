@@ -4,6 +4,12 @@ import {
   scoreResponse,
   type ResponseAnswers,
 } from "@/lib/scoring"
+import {
+  deriveOutcomeBucket,
+  derivePrimaryIntent,
+  type OutcomeBucket,
+  type PrimaryIntent,
+} from "@/lib/leads/outcomes"
 import type { ScoredLead, Template, TemplateQuestion } from "@/types/database"
 
 export type LeadAnswerDetail = {
@@ -16,6 +22,10 @@ export type LeadAnswerDetail = {
 export type DisplayLead = ScoredLead & {
   answer_details: LeadAnswerDetail[]
   is_sample?: boolean
+  primary_intent: PrimaryIntent
+  primary_intent_label: string
+  outcome_id: OutcomeBucket
+  outcome_label: string
 }
 
 const FIRST_NAMES = [
@@ -159,7 +169,7 @@ const LOCALES: Array<{
 
 const EMAIL_DOMAINS = ["gmail.com", "outlook.com", "yahoo.com", "icloud.com"]
 
-const SAMPLE_STORAGE_KEY = "re-ms-sample-leads-v1"
+const SAMPLE_STORAGE_KEY = "re-ms-sample-leads-v2"
 
 function pick<T>(items: T[], index: number) {
   return items[index % items.length]!
@@ -283,6 +293,8 @@ export function generateSampleLeads(
     const scored = scoreResponse(template, answers)
     const bandId = scored.band?.id ?? heat
     const nextStep = actionableNextStep(bandId, template.name, answers)
+    const intent = derivePrimaryIntent(answers, template.name)
+    const outcome = deriveOutcomeBucket(bandId, answers)
 
     return {
       id: `sample-${index}-${first}-${last}`.toLowerCase(),
@@ -308,6 +320,10 @@ export function generateSampleLeads(
       template_name: template.name,
       answer_details: describeAnswers(template.questions, answers),
       is_sample: true,
+      primary_intent: intent.id,
+      primary_intent_label: intent.label,
+      outcome_id: outcome.id,
+      outcome_label: outcome.label,
     }
   })
 }
@@ -324,6 +340,8 @@ export function enrichLeadsWithAnswers(
     const answer_details = template
       ? describeAnswers(template.questions, lead.answers ?? {})
       : []
+    const intent = derivePrimaryIntent(lead.answers, lead.template_name)
+    const outcome = deriveOutcomeBucket(lead.band_id, lead.answers)
     return {
       ...lead,
       recommended_next_step:
@@ -331,6 +349,10 @@ export function enrichLeadsWithAnswers(
         actionableNextStep(lead.band_id, lead.template_name, lead.answers),
       answer_details,
       is_sample: false,
+      primary_intent: intent.id,
+      primary_intent_label: intent.label,
+      outcome_id: outcome.id,
+      outcome_label: outcome.label,
     }
   })
 }
@@ -340,7 +362,20 @@ export function loadSampleLeadsFromSession(): DisplayLead[] | null {
   try {
     const raw = sessionStorage.getItem(SAMPLE_STORAGE_KEY)
     if (!raw) return null
-    return JSON.parse(raw) as DisplayLead[]
+    const parsed = JSON.parse(raw) as DisplayLead[]
+    if (!Array.isArray(parsed) || !parsed.length) return null
+    return parsed.map((lead) => {
+      const intent = derivePrimaryIntent(lead.answers, lead.template_name)
+      const outcome = deriveOutcomeBucket(lead.band_id, lead.answers)
+      return {
+        ...lead,
+        answer_details: lead.answer_details ?? [],
+        primary_intent: lead.primary_intent ?? intent.id,
+        primary_intent_label: lead.primary_intent_label ?? intent.label,
+        outcome_id: lead.outcome_id ?? outcome.id,
+        outcome_label: lead.outcome_label ?? outcome.label,
+      }
+    })
   } catch {
     return null
   }
