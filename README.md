@@ -1,6 +1,6 @@
 # RE Market Sense
 
-Next.js 15 App Router app for real estate teams — auth, orgs, lists, check-in templates, scored leads, exports, and campaign status stubs.
+Next.js 15 App Router app for real estate teams — auth, orgs, lists, check-in templates, scored leads, exports, and consent-gated email campaigns (SendGrid).
 
 ## Stack
 
@@ -28,6 +28,8 @@ cp .env.local.example .env.local
 - `supabase/migrations/001_phase1_foundation.sql`
 - `supabase/migrations/002_phase2_lists_templates.sql`
 - `supabase/migrations/003_phase3_responses_scoring.sql`
+- `supabase/migrations/004_phase4_consent_email.sql`
+- `supabase/migrations/005_phase4_response_invites.sql`
 
 4. Optional: drop your official logo at `public/logo.png`, then set the Logo `src` prop (or change the default in `src/components/brand/logo.tsx`). Until then the app uses `public/logo.svg`.
 
@@ -39,15 +41,32 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-## Phase 3 flow
+## Environment variables
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes | Supabase anon key |
+| `NEXT_PUBLIC_APP_URL` | For email links | Public base URL for `/respond/[token]` links |
+| `SENDGRID_API_KEY` | For email sending | SendGrid API key |
+| `SENDGRID_FROM_EMAIL` | For email sending | Verified branded sender address |
+| `SENDGRID_FROM_NAME` | Optional | Sender display name (defaults to "RE Market Sense") |
+
+Without the SendGrid variables the app still runs; launching a campaign records
+status and logs each send as `skipped` until keys are added.
+
+## Phase 4.2 flow
 
 1. **Lists** — Upload a CSV, validate, preview, save contacts
 2. **Research** — Pair a list with a Realtor-friendly template and preview questions
-3. **Deploy** — Campaign controls (stubs): Mark Ready → Launch → Pause / Resume → Complete / Stop  
-   Status flow: `Draft → Ready → Sending → Paused → Completed / Stopped`  
-   No real SMS/email sending yet
-4. **Leads** — Hot / Warm / Future counts, scored contacts, recommended next steps  
-   Export Follow Up Boss–friendly CSV or a branded DOCX report
+3. **Deploy** — Consent-gated email campaigns
+   - Required consent attestation before launch
+   - **Launch** creates a unique `/respond/[token]` invite per contact and emails a branded CTA
+   - Pause / Resume / Stop remain available; resume skips contacts already emailed
+4. **Public check-in** — Recipient opens the link (no login), answers questions, submits
+5. **Leads** — Answers are scored Hot / Warm / Future immediately and appear on the dashboard
+
+Invalid, expired, or already-used tokens show a friendly public message and never expose other contacts.
 
 ### Seeded templates
 
@@ -68,11 +87,13 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ```
 src/
-  app/                 # Routes: /, /login, /signup, /onboarding, /app/*
-  components/          # UI, lists, research, deploy, leads, app shell, brand
+  app/                 # Routes: /, /login, /signup, /onboarding, /respond/[token], /app/*
+  components/          # UI, lists, research, deploy, leads, respond, app shell, brand
   lib/
     supabase/          # Browser, server, and middleware clients
-    actions/           # Server actions (auth, lists, deployments, exports)
+    actions/           # Server actions (auth, lists, deployments, check-in, exports)
+    email/             # SendGrid + branded check-in email content
+    checkin/           # Public token load + submit helpers
     lists/             # CSV parse / validate / dedupe
     scoring.ts         # Template answer scoring + bands
     exports/           # CSV + DOCX builders

@@ -3,6 +3,8 @@ import { getUserOrg } from "@/lib/auth"
 import type {
   Contact,
   Deployment,
+  DeploymentConsent,
+  DeploymentSendStats,
   List,
   ScoredLead,
   ScoringRules,
@@ -260,4 +262,85 @@ export function summarizeLeadBands(leads: ScoredLead[]) {
     else counts.other += 1
   }
   return counts
+}
+
+/**
+ * Consent + email-send snapshot for every deployment in the org.
+ * Used by the Deploy page to gate launches and show send progress.
+ */
+export async function getDeploymentSendData(): Promise<{
+  consents: Record<string, DeploymentConsent>
+  stats: Record<string, DeploymentSendStats>
+}> {
+  const org = await requireOrg()
+  const supabase = await createClient()
+
+  const [deploymentsRes, consentsRes, sendsRes, contactsRes] =
+    await Promise.all([
+      supabase
+        .from("deployments")
+        .select("id, list_id")
+        .eq("org_id", org.id),
+      supabase
+        .from("deployment_consents")
+        .select("*")
+        .eq("org_id", org.id),
+      supabase
+        .from("message_sends")
+        .select("deployment_id, status, channel")
+        .eq("org_id", org.id)
+        .eq("channel", "email"),
+      supabase
+        .from("contacts")
+        .select("list_id, email, consent_status")
+        .eq("org_id", org.id),
+    ])
+
+  if (deploymentsRes.error) throw new Error(deploymentsRes.error.message)
+  if (consentsRes.error) throw new Error(consentsRes.error.message)
+  if (sendsRes.error) throw new Error(sendsRes.error.message)
+  if (contactsRes.error) throw new Error(contactsRes.error.message)
+
+  // Email-eligible contacts per list (has email, not opted out).
+  const eligibleByList = new Map<string, number>()
+  for (const contact of contactsRes.data ?? []) {
+    const hasEmail = Boolean(contact.email && contact.email.includes("@"))
+    if (!hasEmail || contact.consent_status === "opted_out") continue
+    eligibleByList.set(
+      contact.list_id,
+      (eligibleByList.get(contact.list_id) ?? 0) + 1
+    )
+  }
+
+  const sentByDeployment = new Map<string, number>()
+  const failedByDeployment = new Map<string, number>()
+  for (const send of sendsRes.data ?? []) {
+    if (send.status === "sent") {
+      sentByDeployment.set(
+        send.deployment_id,
+        (sentByDeployment.get(send.deployment_id) ?? 0) + 1
+      )
+    } else if (send.status === "failed") {
+      failedByDeployment.set(
+        send.deployment_id,
+        (failedByDeployment.get(send.deployment_id) ?? 0) + 1
+      )
+    }
+  }
+
+  const consents: Record<string, DeploymentConsent> = {}
+  for (const consent of consentsRes.data ?? []) {
+    consents[consent.deployment_id] = consent
+  }
+
+  const stats: Record<string, DeploymentSendStats> = {}
+  for (const deployment of deploymentsRes.data ?? []) {
+    stats[deployment.id] = {
+      eligible: eligibleByList.get(deployment.list_id) ?? 0,
+      sent: sentByDeployment.get(deployment.id) ?? 0,
+      failed: failedByDeployment.get(deployment.id) ?? 0,
+    }
+  }
+
+  return { consents, stats }
 }

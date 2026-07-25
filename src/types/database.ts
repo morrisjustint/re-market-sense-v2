@@ -129,6 +129,53 @@ export type ScoredLead = ResponseRow & {
   template_name?: string
 }
 
+export type MessageChannel = "email" | "sms"
+export type MessageSendStatus = "sent" | "failed" | "skipped"
+
+export type DeploymentConsent = {
+  id: string
+  org_id: string
+  deployment_id: string
+  attested_by_user_id: string | null
+  attested_by_email: string | null
+  attestation_text: string
+  attested_at: string
+  created_at: string
+}
+
+export type MessageSend = {
+  id: string
+  org_id: string
+  deployment_id: string
+  contact_id: string
+  channel: MessageChannel
+  status: MessageSendStatus
+  provider_message_id: string | null
+  to_address: string | null
+  error: string | null
+  created_at: string
+}
+
+export type DeploymentSendStats = {
+  eligible: number
+  sent: number
+  failed: number
+}
+
+export type ResponseInvite = {
+  id: string
+  org_id: string
+  deployment_id: string
+  contact_id: string
+  token: string
+  agent_name: string
+  org_name: string
+  expires_at: string
+  used_at: string | null
+  response_id: string | null
+  created_at: string
+}
+
 export type Json =
   | string
   | number
@@ -402,6 +449,147 @@ export type Database = {
           },
         ]
       >
+      deployment_consents: TableDef<
+        DeploymentConsent,
+        {
+          id?: string
+          org_id: string
+          deployment_id: string
+          attested_by_user_id?: string | null
+          attested_by_email?: string | null
+          attestation_text: string
+          attested_at?: string
+          created_at?: string
+        },
+        {
+          id?: string
+          org_id?: string
+          deployment_id?: string
+          attested_by_user_id?: string | null
+          attested_by_email?: string | null
+          attestation_text?: string
+          attested_at?: string
+          created_at?: string
+        },
+        [
+          {
+            foreignKeyName: "deployment_consents_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deployment_consents_deployment_id_fkey"
+            columns: ["deployment_id"]
+            isOneToOne: true
+            referencedRelation: "deployments"
+            referencedColumns: ["id"]
+          },
+        ]
+      >
+      message_sends: TableDef<
+        MessageSend,
+        {
+          id?: string
+          org_id: string
+          deployment_id: string
+          contact_id: string
+          channel?: MessageChannel
+          status: MessageSendStatus
+          provider_message_id?: string | null
+          to_address?: string | null
+          error?: string | null
+          created_at?: string
+        },
+        {
+          id?: string
+          org_id?: string
+          deployment_id?: string
+          contact_id?: string
+          channel?: MessageChannel
+          status?: MessageSendStatus
+          provider_message_id?: string | null
+          to_address?: string | null
+          error?: string | null
+          created_at?: string
+        },
+        [
+          {
+            foreignKeyName: "message_sends_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "message_sends_deployment_id_fkey"
+            columns: ["deployment_id"]
+            isOneToOne: false
+            referencedRelation: "deployments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "message_sends_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+        ]
+      >
+      response_invites: TableDef<
+        ResponseInvite,
+        {
+          id?: string
+          org_id: string
+          deployment_id: string
+          contact_id: string
+          token: string
+          agent_name: string
+          org_name: string
+          expires_at: string
+          used_at?: string | null
+          response_id?: string | null
+          created_at?: string
+        },
+        {
+          id?: string
+          org_id?: string
+          deployment_id?: string
+          contact_id?: string
+          token?: string
+          agent_name?: string
+          org_name?: string
+          expires_at?: string
+          used_at?: string | null
+          response_id?: string | null
+          created_at?: string
+        },
+        [
+          {
+            foreignKeyName: "response_invites_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "response_invites_deployment_id_fkey"
+            columns: ["deployment_id"]
+            isOneToOne: false
+            referencedRelation: "deployments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "response_invites_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+        ]
+      >
     }
     Views: Record<string, never>
     Functions: {
@@ -420,6 +608,21 @@ export type Database = {
       is_org_admin: {
         Args: { check_org_id: string }
         Returns: boolean
+      }
+      get_checkin_by_token: {
+        Args: { p_token: string }
+        Returns: Json
+      }
+      submit_checkin_by_token: {
+        Args: {
+          p_token: string
+          p_answers: Json
+          p_score: number
+          p_band_id: string | null
+          p_band_label: string | null
+          p_recommended_next_step: string | null
+        }
+        Returns: Json
       }
     }
     Enums: {
