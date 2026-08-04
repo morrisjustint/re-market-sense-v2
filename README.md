@@ -30,6 +30,7 @@ cp .env.local.example .env.local
 - `supabase/migrations/003_phase3_responses_scoring.sql`
 - `supabase/migrations/004_phase4_consent_email.sql`
 - `supabase/migrations/005_phase4_response_invites.sql`
+- `supabase/migrations/006_phase4_incentives.sql`
 
 4. Optional: drop your official logo at `public/logo.png`, then set the Logo `src` prop (or change the default in `src/components/brand/logo.tsx`). Until then the app uses `public/logo.svg`.
 
@@ -51,9 +52,12 @@ Open [http://localhost:3000](http://localhost:3000).
 | `SENDGRID_API_KEY` | For email sending | SendGrid API key |
 | `SENDGRID_FROM_EMAIL` | For email sending | Verified branded sender address |
 | `SENDGRID_FROM_NAME` | Optional | Sender display name (defaults to "RE Market Sense") |
+| `TREMENDOUS_API_KEY` | Optional | Tremendous API key (gift cards stay queued until live) |
+| `TREMENDOUS_CAMPAIGN_ID` | Optional | Tremendous campaign / product id for later fulfillment |
 
 Without the SendGrid variables the app still runs; launching a campaign records
-status and logs each send as `skipped` until keys are added.
+status and logs each send as `skipped` until keys are added. Thank-you gift
+email wording lives in `src/lib/incentives/config.ts`.
 
 ## Phase 4.2 flow
 
@@ -61,10 +65,12 @@ status and logs each send as `skipped` until keys are added.
 2. **Research** — Pair a list with a Realtor-friendly template and preview questions
 3. **Deploy** — Consent-gated email campaigns
    - Required consent attestation before launch
+   - Optional **$5 thank-you gift** on completion (cost shown clearly; locked after launch)
    - **Launch** creates a unique `/respond/[token]` invite per contact and emails a branded CTA
    - Pause / Resume / Stop remain available; resume skips contacts already emailed
 4. **Public check-in** — Recipient opens the link (no login), answers questions, submits
 5. **Leads** — Answers are scored Hot / Warm / Future immediately and appear on the dashboard
+6. **Gift queue** — When gifts are enabled, each completion creates an `incentive_rewards` row (`pending`) for Tremendous fulfillment later
 
 Invalid, expired, or already-used tokens show a friendly public message and never expose other contacts.
 

@@ -15,6 +15,8 @@ export type CheckInLoadOk = {
   questions: TemplateQuestion[]
   scoring_rules: ScoringRules | null
   expires_at: string
+  incentive_enabled: boolean
+  incentive_amount: number
 }
 
 export type CheckInLoadError = {
@@ -89,6 +91,8 @@ export async function loadCheckInByToken(
     questions: asQuestions(payload.questions),
     scoring_rules: asScoringRules(payload.scoring_rules),
     expires_at: String(payload.expires_at ?? ""),
+    incentive_enabled: Boolean(payload.incentive_enabled),
+    incentive_amount: Number(payload.incentive_amount ?? 5),
   }
 }
 
@@ -165,5 +169,32 @@ export async function submitCheckInByToken(input: {
       typeof payload.band_label === "string"
         ? payload.band_label
         : scored.band?.label ?? null,
+  }
+}
+
+/** Queue a thank-you gift after a successful public submit (Tremendous stub). */
+export async function queueIncentiveForToken(token: string): Promise<{
+  queued: boolean
+  amount?: number
+  status?: string
+}> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc("queue_incentive_for_token", {
+    p_token: token,
+  })
+
+  if (error || !data || typeof data !== "object") {
+    return { queued: false }
+  }
+
+  const payload = data as Record<string, unknown>
+  if (payload.ok !== true || payload.queued !== true) {
+    return { queued: false }
+  }
+
+  return {
+    queued: true,
+    amount: Number(payload.amount ?? 5),
+    status: String(payload.status ?? "pending"),
   }
 }

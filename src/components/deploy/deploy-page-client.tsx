@@ -19,10 +19,18 @@ import { toast } from "sonner"
 import {
   recordConsent,
   startOrResumeSending,
+  updateDeploymentIncentive,
   updateDeploymentStatus,
 } from "@/lib/actions/deployments"
 import { CONSENT_ATTESTATION_TEXT } from "@/lib/consent"
-import { formatCurrency } from "@/lib/lists/csv"
+import {
+  DEFAULT_INCENTIVE_AMOUNT,
+  giftCardOptionLabel,
+} from "@/lib/incentives/config"
+import {
+  estimateCampaignCost,
+  formatCurrency,
+} from "@/lib/lists/csv"
 import type {
   Deployment,
   DeploymentConsent,
@@ -267,6 +275,29 @@ export function DeployPageClient({
     })
   }
 
+  const onIncentiveChange = (
+    deployment: DeploymentRow,
+    enabled: boolean
+  ) => {
+    startTransition(async () => {
+      const result = await updateDeploymentIncentive({
+        deploymentId: deployment.id,
+        incentiveEnabled: enabled,
+        incentiveAmount: deployment.incentive_amount || DEFAULT_INCENTIVE_AMOUNT,
+      })
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(
+        enabled
+          ? "Thank-you gift will be included on completion."
+          : "Sending without a thank-you gift."
+      )
+      router.refresh()
+    })
+  }
+
   const runAction = (deployment: DeploymentRow, action: CampaignAction) => {
     if (action.kind === "send") onSend(deployment)
     else onStatusChange(deployment, action.status)
@@ -324,6 +355,9 @@ export function DeployPageClient({
           pending={pending}
           onConfirmConsent={(checked) =>
             onConfirmConsent(highlighted, checked)
+          }
+          onIncentiveChange={(enabled) =>
+            onIncentiveChange(highlighted, enabled)
           }
           onAction={(action) => runAction(highlighted, action)}
         />
@@ -445,6 +479,7 @@ function HighlightedCampaign({
   stats,
   pending,
   onConfirmConsent,
+  onIncentiveChange,
   onAction,
 }: {
   deployment: DeploymentRow
@@ -452,6 +487,7 @@ function HighlightedCampaign({
   stats?: DeploymentSendStats
   pending: boolean
   onConfirmConsent: (checked: boolean) => void
+  onIncentiveChange: (enabled: boolean) => void
   onAction: (action: CampaignAction) => void
 }) {
   const hasConsent = Boolean(consent)
@@ -462,7 +498,15 @@ function HighlightedCampaign({
   const eligible = stats?.eligible ?? 0
   const sent = stats?.sent ?? 0
   const failed = stats?.failed ?? 0
+  const rewardsQueued = stats?.rewardsQueued ?? 0
   const progress = eligible > 0 ? Math.round((sent / eligible) * 100) : 0
+  const incentiveLocked =
+    deployment.status !== "draft" && deployment.status !== "ready"
+  const costBreakdown = estimateCampaignCost({
+    contactCount: eligible || 0,
+    incentiveEnabled: deployment.incentive_enabled,
+    incentiveAmount: deployment.incentive_amount || DEFAULT_INCENTIVE_AMOUNT,
+  })
 
   return (
     <Card className="border-primary/20 bg-accent/20">
@@ -492,13 +536,25 @@ function HighlightedCampaign({
               Estimated cost
             </p>
             <p className="text-2xl font-semibold text-navy">
-              {deployment.cost_estimate != null
-                ? formatCurrency(Number(deployment.cost_estimate))
-                : "—"}
+              {formatCurrency(
+                deployment.cost_estimate != null
+                  ? Number(deployment.cost_estimate)
+                  : costBreakdown.total
+              )}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Placeholder at about $0.06 per contact.
+              ~{formatCurrency(0.06)} per contact for email
+              {deployment.incentive_enabled
+                ? ` + $${deployment.incentive_amount || DEFAULT_INCENTIVE_AMOUNT} thank-you gift per completed response`
+                : ""}
             </p>
+            {deployment.incentive_enabled ? (
+              <p className="mt-1 text-xs text-muted-foreground">
+                If everyone completes: about{" "}
+                {formatCurrency(costBreakdown.gift)} in thank-you gifts
+                (queued on completion — not charged up front).
+              </p>
+            ) : null}
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">
@@ -545,6 +601,14 @@ function HighlightedCampaign({
           </div>
         </div>
 
+        <IncentiveToggle
+          enabled={Boolean(deployment.incentive_enabled)}
+          amount={deployment.incentive_amount || DEFAULT_INCENTIVE_AMOUNT}
+          locked={incentiveLocked}
+          pending={pending}
+          onChange={onIncentiveChange}
+        />
+
         {showSendProgress ? (
           <div className="rounded-lg border bg-card p-4">
             <div className="flex items-center justify-between">
@@ -563,6 +627,13 @@ function HighlightedCampaign({
               <p className="mt-2 text-xs text-muted-foreground">
                 No email-eligible contacts on this list (missing email or opted
                 out).
+              </p>
+            ) : null}
+            {deployment.incentive_enabled ? (
+              <p className="mt-2 text-xs text-muted-foreground">
+                {rewardsQueued > 0
+                  ? `${rewardsQueued} thank-you gift${rewardsQueued === 1 ? "" : "s"} queued for fulfillment (Tremendous sends when configured).`
+                  : "Thank-you gifts queue when someone completes the check-in."}
               </p>
             ) : null}
           </div>
@@ -606,6 +677,85 @@ function HighlightedCampaign({
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+function IncentiveToggle({
+  enabled,
+  amount,
+  locked,
+  pending,
+  onChange,
+}: {
+  enabled: boolean
+  amount: number
+  locked: boolean
+  pending: boolean
+  onChange: (enabled: boolean) => void
+}) {
+  return (
+    <div className="rounded-lg border bg-card p-4">
+      <p className="text-sm font-medium text-navy">Thank-you gift</p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Optional. Recipients only receive a gift after they complete the
+        check-in.
+        {/* Future: Basic tier will hide/disable this option; Pro keeps it. */}
+      </p>
+      <div className="mt-3 space-y-2">
+        <label
+          className={cn(
+            "flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors",
+            !enabled ? "border-primary bg-primary/5" : "border-border"
+          )}
+        >
+          <input
+            type="radio"
+            name="incentive"
+            className="mt-1"
+            checked={!enabled}
+            disabled={pending || locked}
+            onChange={() => onChange(false)}
+          />
+          <span>
+            <span className="block text-sm font-medium text-foreground">
+              Send without thank-you gift
+            </span>
+            <span className="text-xs text-muted-foreground">
+              Email check-in only — no gift card cost.
+            </span>
+          </span>
+        </label>
+        <label
+          className={cn(
+            "flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors",
+            enabled ? "border-primary bg-primary/5" : "border-border"
+          )}
+        >
+          <input
+            type="radio"
+            name="incentive"
+            className="mt-1"
+            checked={enabled}
+            disabled={pending || locked}
+            onChange={() => onChange(true)}
+          />
+          <span>
+            <span className="block text-sm font-medium text-foreground">
+              {giftCardOptionLabel(amount)}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              +{formatCurrency(amount)} per completed response (queued for
+              fulfillment).
+            </span>
+          </span>
+        </label>
+      </div>
+      {locked ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Gift settings are locked after launch.
+        </p>
+      ) : null}
+    </div>
   )
 }
 

@@ -100,6 +100,26 @@ export type Deployment = {
   cost_estimate: number | null
   created_at: string
   launched_at: string | null
+  incentive_enabled: boolean
+  incentive_amount: number
+}
+
+export type IncentiveRewardStatus = "pending" | "sent" | "failed" | "skipped"
+
+export type IncentiveReward = {
+  id: string
+  org_id: string
+  deployment_id: string
+  contact_id: string
+  response_id: string | null
+  amount: number
+  currency: string
+  status: IncentiveRewardStatus
+  provider: string
+  external_id: string | null
+  error: string | null
+  created_at: string
+  updated_at: string
 }
 
 export type ResponseRow = {
@@ -160,6 +180,7 @@ export type DeploymentSendStats = {
   eligible: number
   sent: number
   failed: number
+  rewardsQueued: number
 }
 
 export type ResponseInvite = {
@@ -352,6 +373,8 @@ export type Database = {
           cost_estimate?: number | null
           created_at?: string
           launched_at?: string | null
+          incentive_enabled?: boolean
+          incentive_amount?: number
         },
         {
           id?: string
@@ -363,6 +386,8 @@ export type Database = {
           cost_estimate?: number | null
           created_at?: string
           launched_at?: string | null
+          incentive_enabled?: boolean
+          incentive_amount?: number
         },
         [
           {
@@ -590,6 +615,62 @@ export type Database = {
           },
         ]
       >
+      incentive_rewards: TableDef<
+        IncentiveReward,
+        {
+          id?: string
+          org_id: string
+          deployment_id: string
+          contact_id: string
+          response_id?: string | null
+          amount?: number
+          currency?: string
+          status?: IncentiveRewardStatus
+          provider?: string
+          external_id?: string | null
+          error?: string | null
+          created_at?: string
+          updated_at?: string
+        },
+        {
+          id?: string
+          org_id?: string
+          deployment_id?: string
+          contact_id?: string
+          response_id?: string | null
+          amount?: number
+          currency?: string
+          status?: IncentiveRewardStatus
+          provider?: string
+          external_id?: string | null
+          error?: string | null
+          created_at?: string
+          updated_at?: string
+        },
+        [
+          {
+            foreignKeyName: "incentive_rewards_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "incentive_rewards_deployment_id_fkey"
+            columns: ["deployment_id"]
+            isOneToOne: false
+            referencedRelation: "deployments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "incentive_rewards_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+        ]
+      >
     }
     Views: Record<string, never>
     Functions: {
@@ -622,6 +703,10 @@ export type Database = {
           p_band_label: string | null
           p_recommended_next_step: string | null
         }
+        Returns: Json
+      }
+      queue_incentive_for_token: {
+        Args: { p_token: string }
         Returns: Json
       }
     }

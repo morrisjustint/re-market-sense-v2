@@ -8,9 +8,11 @@ import { toast } from "sonner"
 
 import { createDeployment } from "@/lib/actions/lists"
 import {
+  estimateCampaignCost,
   estimateOutreachCost,
   formatCurrency,
 } from "@/lib/lists/csv"
+import { DEFAULT_INCENTIVE_AMOUNT } from "@/lib/incentives/config"
 import type { List, Template } from "@/types/database"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -57,6 +59,13 @@ export function ResearchPageClient({
   const cost = selectedList
     ? estimateOutreachCost(selectedList.contact_count)
     : 0
+  const withGift = selectedList
+    ? estimateCampaignCost({
+        contactCount: selectedList.contact_count,
+        incentiveEnabled: true,
+        incentiveAmount: DEFAULT_INCENTIVE_AMOUNT,
+      })
+    : null
 
   const onContinue = () => {
     if (!listId || !templateId) {
@@ -220,7 +229,8 @@ export function ResearchPageClient({
               Cost estimate
             </CardTitle>
             <CardDescription>
-              Placeholder only — no messages send in this phase.
+              Base email cost for this list. You can add a thank-you gift on
+              Deploy before launch.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -229,8 +239,12 @@ export function ResearchPageClient({
             </p>
             <p className="text-sm text-muted-foreground">
               Based on {selectedList?.contact_count ?? 0} contacts at about $0.06
-              each (text/email blend). Final pricing comes when sending is
-              enabled.
+              each for email. On Deploy you can include a $
+              {DEFAULT_INCENTIVE_AMOUNT} thank-you gift per completed response
+              {withGift
+                ? ` (about ${formatCurrency(withGift.gift)} if everyone completes)`
+                : ""}
+              .
             </p>
             <Button
               type="button"

@@ -4,17 +4,25 @@ import { revalidatePath } from "next/cache"
 
 import {
   loadCheckInByToken,
+  queueIncentiveForToken,
   submitCheckInByToken,
 } from "@/lib/checkin/public"
 import type { ResponseAnswers } from "@/lib/scoring"
 
 export type SubmitPublicCheckInResult =
-  | { success: true; score: number; bandLabel: string | null }
+  | {
+      success: true
+      score: number
+      bandLabel: string | null
+      rewardQueued?: boolean
+      rewardAmount?: number
+    }
   | { success: false; error: string; code?: string }
 
 /**
  * Public (no-login) check-in submit. Scores answers server-side, then stores
  * via SECURITY DEFINER RPC so only this token's contact/deployment is touched.
+ * When the deployment has thank-you gifts enabled, queues an incentive reward.
  */
 export async function submitPublicCheckIn(input: {
   token: string
@@ -86,12 +94,26 @@ export async function submitPublicCheckIn(input: {
       templateName: loaded.template_name,
     })
 
-    if (result.success) {
-      revalidatePath("/app/analytics")
-      revalidatePath("/app/deploy")
+    if (!result.success) return result
+
+    let rewardQueued = false
+    let rewardAmount: number | undefined
+    if (loaded.incentive_enabled) {
+      const reward = await queueIncentiveForToken(token)
+      rewardQueued = reward.queued
+      rewardAmount = reward.amount
     }
 
-    return result
+    revalidatePath("/app/analytics")
+    revalidatePath("/app/deploy")
+
+    return {
+      success: true,
+      score: result.score,
+      bandLabel: result.bandLabel,
+      rewardQueued,
+      rewardAmount,
+    }
   } catch (error) {
     return {
       success: false,

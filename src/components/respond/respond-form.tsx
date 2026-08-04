@@ -6,6 +6,7 @@ import { toast } from "sonner"
 
 import { submitPublicCheckIn } from "@/lib/actions/checkin"
 import type { CheckInLoadOk } from "@/lib/checkin/public"
+import { giftCardEmailSentence } from "@/lib/incentives/config"
 import type { ResponseAnswers } from "@/lib/scoring"
 import { Logo } from "@/components/brand/logo"
 import { Button } from "@/components/ui/button"
@@ -68,6 +69,12 @@ export function RespondForm({ checkIn }: { checkIn: CheckInLoadOk }) {
             {checkIn.agent_name} will follow up if there&apos;s a helpful next
             step. You can close this page.
           </p>
+          {checkIn.incentive_enabled ? (
+            <p className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-navy">
+              Your ${checkIn.incentive_amount} thank-you gift card is being
+              prepared and will arrive by email soon.
+            </p>
+          ) : null}
         </div>
       </RespondShell>
     )
@@ -95,6 +102,11 @@ export function RespondForm({ checkIn }: { checkIn: CheckInLoadOk }) {
           {checkIn.intro_text ? (
             <p className="text-sm leading-relaxed text-muted-foreground">
               {checkIn.intro_text}
+            </p>
+          ) : null}
+          {checkIn.incentive_enabled ? (
+            <p className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-navy">
+              {giftCardEmailSentence(checkIn.incentive_amount)}
             </p>
           ) : null}
         </div>

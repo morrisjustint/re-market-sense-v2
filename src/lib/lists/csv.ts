@@ -209,6 +209,43 @@ export function estimateOutreachCost(contactCount: number) {
   return Math.round(contactCount * perContact * 100) / 100
 }
 
+/**
+ * Base email/outreach cost plus optional thank-you gifts.
+ * Gift cost is estimated per expected completion (defaults to all contacts).
+ */
+export function estimateCampaignCost(input: {
+  contactCount: number
+  incentiveEnabled?: boolean
+  incentiveAmount?: number
+  /** Expected completions for gift estimate; defaults to contactCount. */
+  expectedCompletions?: number
+}) {
+  const base = estimateOutreachCost(input.contactCount)
+  if (!input.incentiveEnabled) {
+    return {
+      base,
+      gift: 0,
+      total: base,
+      expectedCompletions: 0,
+      incentiveAmount: input.incentiveAmount ?? 5,
+    }
+  }
+
+  const amount = input.incentiveAmount ?? 5
+  const expected = Math.max(
+    0,
+    input.expectedCompletions ?? input.contactCount
+  )
+  const gift = Math.round(expected * amount * 100) / 100
+  return {
+    base,
+    gift,
+    total: Math.round((base + gift) * 100) / 100,
+    expectedCompletions: expected,
+    incentiveAmount: amount,
+  }
+}
+
 export function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",

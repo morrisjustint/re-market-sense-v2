@@ -15,6 +15,7 @@ import {
 } from "@/lib/response-invites"
 import { scoreResponse, type ResponseAnswers } from "@/lib/scoring"
 import { createClient } from "@/lib/supabase/server"
+import { estimateCampaignCost } from "@/lib/lists/csv"
 import type { Contact, DeploymentStatus, Template } from "@/types/database"
 
 export type ActionResult<T = undefined> =
@@ -141,6 +142,79 @@ export async function recordConsent(
 }
 
 /**
+ * Set thank-you gift choice before launch. Locked once sending has started.
+ * Recalculates cost_estimate = base outreach + ($amount × contacts).
+ */
+export async function updateDeploymentIncentive(input: {
+  deploymentId: string
+  incentiveEnabled: boolean
+  incentiveAmount?: number
+}): Promise<ActionResult> {
+  try {
+    const org = await requireOrg()
+    const supabase = await createClient()
+
+    const { data: deployment } = await supabase
+      .from("deployments")
+      .select("id, status, list_id")
+      .eq("id", input.deploymentId)
+      .eq("org_id", org.id)
+      .maybeSingle()
+
+    if (!deployment) return { success: false, error: "Deployment not found." }
+
+    if (
+      deployment.status !== "draft" &&
+      deployment.status !== "ready"
+    ) {
+      return {
+        success: false,
+        error: "Thank-you gift settings can only change before launch.",
+      }
+    }
+
+    const amount = input.incentiveEnabled
+      ? Math.max(1, Number(input.incentiveAmount ?? 5))
+      : 5
+
+    const { data: list } = await supabase
+      .from("lists")
+      .select("contact_count")
+      .eq("id", deployment.list_id)
+      .eq("org_id", org.id)
+      .maybeSingle()
+
+    const contactCount = list?.contact_count ?? 0
+    const cost = estimateCampaignCost({
+      contactCount,
+      incentiveEnabled: input.incentiveEnabled,
+      incentiveAmount: amount,
+    })
+
+    const { error } = await supabase
+      .from("deployments")
+      .update({
+        incentive_enabled: input.incentiveEnabled,
+        incentive_amount: amount,
+        cost_estimate: cost.total,
+      })
+      .eq("id", input.deploymentId)
+      .eq("org_id", org.id)
+
+    if (error) return { success: false, error: error.message }
+
+    revalidatePath("/app/deploy")
+    revalidatePath("/app/research")
+    return { success: true }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Something went wrong.",
+    }
+  }
+}
+
+/**
  * Launches (ready → sending) or resumes (paused → sending) an email campaign.
  * Blocks unless consent has been attested, then sends branded emails to every
  * eligible contact that has not already received one, logging each attempt.
@@ -155,7 +229,7 @@ export async function startOrResumeSending(
 
     const { data: deployment } = await supabase
       .from("deployments")
-      .select("id, status, list_id, template_id")
+      .select("id, status, list_id, template_id, incentive_enabled, incentive_amount")
       .eq("id", deploymentId)
       .eq("org_id", org.id)
       .maybeSingle()
@@ -213,6 +287,8 @@ export async function startOrResumeSending(
         (user?.user_metadata?.full_name as string | undefined)?.trim() ||
         org.name,
       agentEmail: user?.email ?? null,
+      incentiveEnabled: Boolean(deployment.incentive_enabled),
+      incentiveAmount: Number(deployment.incentive_amount ?? 5),
     })
 
     revalidatePath("/app/deploy")
@@ -235,6 +311,8 @@ async function runEmailCampaign(input: {
   listId: string
   agentName: string
   agentEmail: string | null
+  incentiveEnabled: boolean
+  incentiveAmount: number
 }): Promise<SendSummary> {
   const supabase = await createClient()
   const config = getEmailConfig()
@@ -316,6 +394,8 @@ async function runEmailCampaign(input: {
       orgName: input.orgName,
       respondUrl,
       replyToEmail: input.agentEmail,
+      incentiveEnabled: input.incentiveEnabled,
+      incentiveAmount: input.incentiveAmount,
     })
 
     const result = await sendEmail(config, {

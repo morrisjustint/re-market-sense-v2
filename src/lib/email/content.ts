@@ -1,3 +1,4 @@
+import { giftCardEmailSentence } from "@/lib/incentives/config"
 import type { Contact, Template } from "@/types/database"
 
 export type EmailContent = {
@@ -15,6 +16,9 @@ export type BuildEmailInput = {
   respondUrl: string
   /** Where a reply / opt-out request should be directed. */
   replyToEmail?: string | null
+  /** Thank-you gift card on completion. */
+  incentiveEnabled?: boolean
+  incentiveAmount?: number
 }
 
 function escapeHtml(value: string) {
@@ -38,13 +42,25 @@ const OPT_OUT_SENTENCE =
  * to the unique check-in link. Questions live on the form, not in the email.
  */
 export function buildCheckInEmail(input: BuildEmailInput): EmailContent {
-  const { template, contact, agentName, orgName, respondUrl } = input
+  const {
+    template,
+    contact,
+    agentName,
+    orgName,
+    respondUrl,
+    incentiveEnabled,
+    incentiveAmount,
+  } = input
   const name = greetingName(contact)
   const questionCount = (template.questions ?? []).length
 
   const intro =
     template.intro_text?.trim() ||
     "I wanted to check in and see how you're thinking about your home and any plans that might be ahead."
+
+  const thankYouLine = incentiveEnabled
+    ? giftCardEmailSentence(incentiveAmount ?? 5)
+    : null
 
   const subject = `A quick note about your home${
     contact.first_name ? `, ${contact.first_name.trim()}` : ""
@@ -58,11 +74,16 @@ export function buildCheckInEmail(input: BuildEmailInput): EmailContent {
       : "It only takes a minute — whenever it's convenient."
 
   // -------- Plain text --------
-  const text = [
+  const textParts = [
     `Hi ${name},`,
     "",
     intro,
     "",
+  ]
+  if (thankYouLine) {
+    textParts.push(thankYouLine, "")
+  }
+  textParts.push(
     timingLine,
     "",
     "Start the short check-in here:",
@@ -74,10 +95,17 @@ export function buildCheckInEmail(input: BuildEmailInput): EmailContent {
     agentName,
     `Sent on behalf of ${agentName} via ${orgName}`,
     "",
-    OPT_OUT_SENTENCE,
-  ].join("\n")
+    OPT_OUT_SENTENCE
+  )
+  const text = textParts.join("\n")
 
   // -------- HTML --------
+  const thankYouHtml = thankYouLine
+    ? `<p style="margin:0 0 16px;padding:12px 14px;background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;color:#0f766e;font-size:15px;line-height:1.6;">${escapeHtml(
+        thankYouLine
+      )}</p>`
+    : ""
+
   const html = `<!doctype html>
 <html>
   <body style="margin:0;background:#f1f5f9;padding:24px;font-family:Arial,Helvetica,sans-serif;">
@@ -95,6 +123,7 @@ export function buildCheckInEmail(input: BuildEmailInput): EmailContent {
           <p style="margin:0 0 16px;color:#334155;font-size:15px;line-height:1.6;">${escapeHtml(
             intro
           )}</p>
+          ${thankYouHtml}
           <p style="margin:0 0 24px;color:#334155;font-size:15px;line-height:1.6;">${escapeHtml(
             timingLine
           )}</p>

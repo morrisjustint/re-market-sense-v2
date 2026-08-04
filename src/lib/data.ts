@@ -129,6 +129,8 @@ export async function getDeployments(): Promise<
       cost_estimate,
       created_at,
       launched_at,
+      incentive_enabled,
+      incentive_amount,
       lists ( name ),
       templates ( name )
     `
@@ -155,6 +157,11 @@ export async function getDeployments(): Promise<
           : Number(row.cost_estimate),
       created_at: row.created_at,
       launched_at: row.launched_at,
+      incentive_enabled: Boolean(row.incentive_enabled),
+      incentive_amount:
+        row.incentive_amount === null || row.incentive_amount === undefined
+          ? 5
+          : Number(row.incentive_amount),
       list_name: listJoin?.name,
       template_name: templateJoin?.name,
     }
@@ -275,7 +282,7 @@ export async function getDeploymentSendData(): Promise<{
   const org = await requireOrg()
   const supabase = await createClient()
 
-  const [deploymentsRes, consentsRes, sendsRes, contactsRes] =
+  const [deploymentsRes, consentsRes, sendsRes, contactsRes, rewardsRes] =
     await Promise.all([
       supabase
         .from("deployments")
@@ -294,12 +301,17 @@ export async function getDeploymentSendData(): Promise<{
         .from("contacts")
         .select("list_id, email, consent_status")
         .eq("org_id", org.id),
+      supabase
+        .from("incentive_rewards")
+        .select("deployment_id, status")
+        .eq("org_id", org.id),
     ])
 
   if (deploymentsRes.error) throw new Error(deploymentsRes.error.message)
   if (consentsRes.error) throw new Error(consentsRes.error.message)
   if (sendsRes.error) throw new Error(sendsRes.error.message)
   if (contactsRes.error) throw new Error(contactsRes.error.message)
+  if (rewardsRes.error) throw new Error(rewardsRes.error.message)
 
   // Email-eligible contacts per list (has email, not opted out).
   const eligibleByList = new Map<string, number>()
@@ -328,6 +340,16 @@ export async function getDeploymentSendData(): Promise<{
     }
   }
 
+  const rewardsByDeployment = new Map<string, number>()
+  for (const reward of rewardsRes.data ?? []) {
+    if (reward.status === "pending" || reward.status === "sent") {
+      rewardsByDeployment.set(
+        reward.deployment_id,
+        (rewardsByDeployment.get(reward.deployment_id) ?? 0) + 1
+      )
+    }
+  }
+
   const consents: Record<string, DeploymentConsent> = {}
   for (const consent of consentsRes.data ?? []) {
     consents[consent.deployment_id] = consent
@@ -339,6 +361,7 @@ export async function getDeploymentSendData(): Promise<{
       eligible: eligibleByList.get(deployment.list_id) ?? 0,
       sent: sentByDeployment.get(deployment.id) ?? 0,
       failed: failedByDeployment.get(deployment.id) ?? 0,
+      rewardsQueued: rewardsByDeployment.get(deployment.id) ?? 0,
     }
   }
 
