@@ -22,6 +22,7 @@ export function RespondForm({ checkIn }: { checkIn: CheckInLoadOk }) {
   const [answers, setAnswers] = useState<ResponseAnswers>({})
   const [pending, startTransition] = useTransition()
   const [done, setDone] = useState(false)
+  const [rewardSent, setRewardSent] = useState(false)
 
   const progress = useMemo(() => {
     if (!questions.length) return 100
@@ -51,6 +52,7 @@ export function RespondForm({ checkIn }: { checkIn: CheckInLoadOk }) {
         toast.error(result.error)
         return
       }
+      setRewardSent(Boolean(result.rewardSent))
       setDone(true)
     })
   }
@@ -71,8 +73,9 @@ export function RespondForm({ checkIn }: { checkIn: CheckInLoadOk }) {
           </p>
           {checkIn.incentive_enabled ? (
             <p className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-navy">
-              Your ${checkIn.incentive_amount} thank-you gift card is being
-              prepared and will arrive by email soon.
+              {rewardSent
+                ? `Your $${checkIn.incentive_amount} thank-you gift card is on the way — check your email for a link to redeem it.`
+                : `Your $${checkIn.incentive_amount} thank-you gift card is being prepared and will arrive by email soon.`}
             </p>
           ) : null}
         </div>

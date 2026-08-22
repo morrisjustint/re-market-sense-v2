@@ -30,6 +30,4 @@ export function giftCardOptionLabel(amount = DEFAULT_INCENTIVE_AMOUNT) {
   return `Include $${amount} thank-you gift card on completion`
 }
 
-export function isTremendousConfigured() {
-  return Boolean(process.env.TREMENDOUS_API_KEY?.trim())
-}
+export { isTremendousConfigured } from "@/lib/incentives/tremendous"

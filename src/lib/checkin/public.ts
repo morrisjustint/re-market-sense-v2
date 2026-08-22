@@ -172,29 +172,11 @@ export async function submitCheckInByToken(input: {
   }
 }
 
-/** Queue a thank-you gift after a successful public submit (Tremendous stub). */
-export async function queueIncentiveForToken(token: string): Promise<{
-  queued: boolean
-  amount?: number
-  status?: string
-}> {
-  const supabase = await createClient()
-  const { data, error } = await supabase.rpc("queue_incentive_for_token", {
-    p_token: token,
-  })
-
-  if (error || !data || typeof data !== "object") {
-    return { queued: false }
-  }
-
-  const payload = data as Record<string, unknown>
-  if (payload.ok !== true || payload.queued !== true) {
-    return { queued: false }
-  }
-
-  return {
-    queued: true,
-    amount: Number(payload.amount ?? 5),
-    status: String(payload.status ?? "pending"),
-  }
+/**
+ * Queue a thank-you gift after a successful public submit, then fulfill via
+ * Tremendous Sandbox when configured. Failures never throw — check-in stays OK.
+ */
+export async function queueIncentiveForToken(token: string) {
+  const { fulfillIncentiveForToken } = await import("@/lib/incentives/fulfill")
+  return fulfillIncentiveForToken(token)
 }

@@ -15,6 +15,7 @@ export type SubmitPublicCheckInResult =
       score: number
       bandLabel: string | null
       rewardQueued?: boolean
+      rewardSent?: boolean
       rewardAmount?: number
     }
   | { success: false; error: string; code?: string }
@@ -22,7 +23,7 @@ export type SubmitPublicCheckInResult =
 /**
  * Public (no-login) check-in submit. Scores answers server-side, then stores
  * via SECURITY DEFINER RPC so only this token's contact/deployment is touched.
- * When the deployment has thank-you gifts enabled, queues an incentive reward.
+ * When thank-you gifts are enabled, queues and fulfills via Tremendous Sandbox.
  */
 export async function submitPublicCheckIn(input: {
   token: string
@@ -97,11 +98,20 @@ export async function submitPublicCheckIn(input: {
     if (!result.success) return result
 
     let rewardQueued = false
+    let rewardSent = false
     let rewardAmount: number | undefined
     if (loaded.incentive_enabled) {
-      const reward = await queueIncentiveForToken(token)
-      rewardQueued = reward.queued
-      rewardAmount = reward.amount
+      try {
+        const reward = await queueIncentiveForToken(token)
+        rewardQueued = reward.queued
+        rewardSent = reward.sent
+        rewardAmount = reward.amount
+      } catch (error) {
+        console.error(
+          "[checkin] incentive fulfillment error",
+          error instanceof Error ? error.message : error
+        )
+      }
     }
 
     revalidatePath("/app/analytics")
@@ -112,6 +122,7 @@ export async function submitPublicCheckIn(input: {
       score: result.score,
       bandLabel: result.bandLabel,
       rewardQueued,
+      rewardSent,
       rewardAmount,
     }
   } catch (error) {

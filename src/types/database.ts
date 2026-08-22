@@ -709,6 +709,15 @@ export type Database = {
         Args: { p_token: string }
         Returns: Json
       }
+      update_incentive_reward_status: {
+        Args: {
+          p_reward_id: string
+          p_status: string
+          p_external_id?: string | null
+          p_error?: string | null
+        }
+        Returns: Json
+      }
     }
     Enums: {
       org_role: OrgRole
